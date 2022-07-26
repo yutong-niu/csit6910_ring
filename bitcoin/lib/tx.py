@@ -8,6 +8,7 @@ from helper import (
     int_to_little_endian,
     little_endian_to_int,
     read_varint,
+    SIGHASH_ALL
 )
 from script import Script
 
@@ -134,6 +135,89 @@ class Tx:
         for tx_out in self.tx_outs:
             output_sum += tx_out.amount
         return input_sum - output_sum
+    
+    def sig_hash(self, input_index):
+        '''
+        Returns the integer representation of the hash that needs to get
+        signed for index input_index
+        '''
+
+        # start the serialization with version
+        # use int_to_little_endian in 4 bytes
+        s = int_to_little_endian(self.version, 4)
+        # add how many inputs there are using encode_varint
+        s += encode_varint(len(self.tx_ins))
+        # loop through each input using enumerate, so we have the input index
+        for i, tx_in in enumerate(self.tx_ins):
+            if i == input_index:
+            # if the input index is the one we're signing
+                s += TxIn(
+                    prev_tx=tx_in.prev_tx,
+                    prev_index=tx_in.prev_index,
+                    # the previous tx's ScriptPubkey is the ScriptSig
+                    # Otherwise, the ScriptSig is empty
+                    script_sig=tx_in.script_pubkey(self.testnet),
+                    sequence=tx_in.sequence,
+                ).serialize()
+            else:
+                # add the serialization of the input with the ScriptSig we want
+                s += TxIn(
+                    prev_tx=tx_in.prev_tx,
+                    prev_index=tx_in.prev_index,
+                    sequence=tx_in.sequence,
+                ).serialize()
+        # add how many outputs there are using encode_varint
+        s += encode_varint(len(self.tx_outs))
+        for tx_out in self.tx_outs:
+            # add the serialization of each output
+            s += tx_out.serialize()
+        # add the locktime using int_to_little_endian in 4 bytes
+        s += int_to_little_endian(self.locktime, 4)
+        # add SIGHASH_ALL using int_to_little_endian in 4 bytes
+        s += int_to_little_endian(SIGHASH_ALL, 4)
+        # hash256 the serialization
+        h256 = hash256(s)
+        # convert the result to an integer using int.from_bytes(x, 'big')
+        return int.from_bytes(h256, 'big')
+    
+    def verify_input(self, input_index):
+        '''Returns whether the input has a valid signature'''
+        # get the relevant input
+        tx_in = self.tx_ins[input_index]
+        # grab the previous ScriptPubKey
+        script_pubkey = tx_in.script_pubkey(testnet=self.testnet)
+        # get the signature hash (z)
+        z = self.sig_hash(input_index)
+        # combine the current ScriptSig and the previous ScriptPubKey
+        combined = tx_in.script_sig + script_pubkey
+        # evaluate the combined script
+        return combined.evaluate(z)
+    
+    def verify(self):
+        '''Verify this transaction'''
+        # make sure not creating money
+        if self.fee() < 0:
+            return False
+        for i in range(len(self.tx_ins)):
+            # make sure each input has a correct ScriptSig
+            if not self.verify_input(i):
+                return False
+        return True
+    
+    def sign_input(self, input_index, private_key):
+        # get the signature hash (z)
+        z = self.sig_hash(input_index)
+        # get der signature of z from private key
+        der = private_key.sign(z).der()
+        # append the SIGHASH_ALL to der (use SIGHASH_ALL.to_bytes(1, 'big'))
+        sig = der + SIGHASH_ALL.to_bytes(1, 'big')
+        # calculate the sec
+        sec = private_key.point.sec()
+        # initialize a new script with [sig, sec] as the cmds
+        # change input's script_sig to new script
+        self.tx_ins[input_index].script_sig = Script([sig, sec])
+        # return whether sig is valid using self.verify_input
+        return self.verify_input(input_index)
 
 class TxIn:
     """
