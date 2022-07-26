@@ -1,4 +1,5 @@
 from io import BytesIO
+from logging import getLogger
 
 from helper import (
     encode_varint,
@@ -7,14 +8,40 @@ from helper import (
     read_varint,
 )
 
+from op import (
+    OP_CODE_FUNCTIONS,
+    OP_CODE_NAMES,
+)
+
+LOGGER = getLogger(__name__)
+
 class Script:
 
     def __init__(self, cmds=None):
         if cmds is None:
             self.cmds = []
         else:
+            # each command is either an opcode or
+            # an element to be pushed onto the stack
             self.cmds = cmds
     
+    def __repr__(self):
+        result = []
+        for cmd in self.cmds:
+            if type(cmd) == int:
+                if OP_CODE_NAMES.get(cmd):
+                    name = OP_CODE_NAMES.get(cmd)
+                else:
+                    name = 'OP_[{}]'.format(cmd)
+                result.append(name)
+            else:
+                result.append(cmd.hex())
+        return ' '.join(result)
+    
+    def __add__(self, other):
+        # return the combined Script object
+        return Script(self.cmds + other.cmds)
+
     @classmethod
     def parse(cls, s):
         # get the length of the entire field
@@ -95,3 +122,43 @@ class Script:
         total = len(result)
         # encode_varint the total length of the result and prepend
         return encode_varint(total) + result
+    
+    def evaluate(self, z):
+        # create a copy as we may need to add to this list if we have a
+        # RedeemScript
+        cmds = self.cmds[:]
+        stack = []
+        altstack = []
+        while len(cmds) > 0:
+            cmd = cmds.pop(0)
+            if type(cmd) == int:
+                # do what the opcode says
+                operation = OP_CODE_FUNCTIONS[cmd]
+                if cmd in (99, 100):
+                    # op_if/op_notif require the cmds array
+                    if not operation(stack, cmds):
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        return False
+                elif cmd in (107, 108):
+                    # op_toaltstack/op_fromaltstack require the altstack
+                    if not operation(stack, altstack):
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        return False
+                elif cmd in (172, 173, 174, 175):
+                    # these are signing operations, they need a sig_hash
+                    # to check against
+                    if not operation(stack, z):
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        return False
+                else:
+                    if not operation(stack):
+                        LOGGER.info('bad op: {}'.format(OP_CODE_NAMES[cmd]))
+                        return False
+            else:
+                # add the cmd to the stack
+                stack.append(cmd)
+        if len(stack) == 0:
+            return False
+        if stack.pop() == b'':
+            return False
+        return True
