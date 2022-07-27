@@ -1,13 +1,7 @@
 import setup
 from unittest import TestCase
-from helper import (
-    little_endian_to_int,
-    int_to_little_endian,
-    decode_base58,
-    encode_base58_checksum,
-    h160_to_p2pkh_address,
-    h160_to_p2sh_address
-)
+
+from helper import *
 
 class HelperTest(TestCase):
 
