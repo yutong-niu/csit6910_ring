@@ -1,35 +1,43 @@
 import hashlib
 
+
 SIGHASH_ALL = 1
 SIGHASH_NONE = 2
 SIGHASH_SINGLE = 3
 BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
+
 def hash160(s):
     '''sha256 followed by ripemd160'''
     return hashlib.new('ripemd160', hashlib.sha256(s).digest()).digest()
+
 
 def hash256(s):
     '''two rounds of sha256'''
     return hashlib.sha256(hashlib.sha256(s).digest()).digest()
 
+
 def encode_base58(s):
+    # determine how many 0 bytes (b'\x00') s starts with
     count = 0
-    for c in s:  # determine how many bytes are 0 bytes
+    for c in s:
         if c == 0:
             count += 1
         else:
             break
+    # convert to big endian integer
     num = int.from_bytes(s, 'big')
     prefix = '1' * count
     result = ''
-    while num > 0:  # figure out Base58 digit
+    while num > 0:
         num, mod = divmod(num, 58)
         result = BASE58_ALPHABET[mod] + result
     return prefix + result
 
-def encode_base58_checksum(b):
-    return encode_base58(b + hash256(b)[:4])
+
+def encode_base58_checksum(s):
+    return encode_base58(s + hash256(s)[:4])
+
 
 def decode_base58(s):
     num = 0
@@ -42,15 +50,18 @@ def decode_base58(s):
         raise ValueError('bad address: {} {}'.format(checksum, hash256(combined[:-4])[:4]))
     return combined[1:-4]
 
+
 def little_endian_to_int(b):
     '''little_endian_to_int takes byte sequence as a little-endian number.
     Returns an integer'''
     return int.from_bytes(b, 'little')
 
+
 def int_to_little_endian(n, length):
     '''endian_to_little_endian takes an integer and returns the little-endian
     byte sequence of length'''
     return n.to_bytes(length, 'little')
+
 
 def read_varint(s):
     '''read_varint reads a variable integer from a stream'''
@@ -68,6 +79,7 @@ def read_varint(s):
         # anything else is just the integer
         return i
 
+
 def encode_varint(i):
     '''encodes an integer as a varint'''
     if i < 0xfd:
@@ -81,14 +93,20 @@ def encode_varint(i):
     else:
         raise ValueError('integer too large: {}'.format(i))
 
+
 def h160_to_p2pkh_address(h160, testnet=False):
+    '''Takes a byte sequence hash160 and returns a p2pkh address string'''
+    # p2pkh has a prefix of b'\x00' for mainnet, b'\x6f' for testnet
     if testnet:
         prefix = b'\x6f'
     else:
         prefix = b'\x00'
     return encode_base58_checksum(prefix + h160)
 
+
 def h160_to_p2sh_address(h160, testnet=False):
+    '''Takes a byte sequence hash160 and returns a p2sh address string'''
+    # p2sh has a prefix of b'\x05' for mainnet, b'\xc4' for testnet
     if testnet:
         prefix = b'\xc4'
     else:

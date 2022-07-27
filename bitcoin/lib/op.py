@@ -1,5 +1,7 @@
 import hashlib
 
+from logging import getLogger
+
 from ecc import (
     S256Point,
     Signature,
@@ -11,6 +13,9 @@ from helper import (
 )
 
 
+LOGGER = getLogger(__name__)
+
+
 def encode_num(num):
     if num == 0:
         return b''
@@ -20,6 +25,9 @@ def encode_num(num):
     while abs_num:
         result.append(abs_num & 0xff)
         abs_num >>= 8
+    # if the top bit is set,
+    # for negative numbers we ensure that the top bit is set
+    # for positive numbers we ensure that the top bit is not set
     if result[-1] & 0x80:
         if negative:
             result.append(0x80)
@@ -33,7 +41,9 @@ def encode_num(num):
 def decode_num(element):
     if element == b'':
         return 0
+    # reverse for big endian
     big_endian = element[::-1]
+    # top bit being 1 means it's negative
     if big_endian[0] & 0x80:
         negative = True
         result = big_endian[0] & 0x7f
@@ -306,9 +316,9 @@ def op_drop(stack):
 
 
 def op_dup(stack):
-    if len(stack) < 1:  # have to have at least one element
+    if len(stack) < 1:
         return False
-    stack.append(stack[-1])  # duplicate the top element of the stack
+    stack.append(stack[-1])
     return True
 
 
@@ -464,15 +474,6 @@ def op_sub(stack):
     element1 = decode_num(stack.pop())
     element2 = decode_num(stack.pop())
     stack.append(encode_num(element2 - element1))
-    return True
-
-
-def op_mul(stack):
-    if len(stack) < 2:
-        return False
-    element1 = decode_num(stack.pop())
-    element2 = decode_num(stack.pop())
-    stack.append(encode_num(element2 * element1))
     return True
 
 
@@ -643,8 +644,8 @@ def op_hash160(stack):
         return False
     # pop off the top element from the stack
     element = stack.pop()
-    h160 = hash160(element)
     # push a hash160 of the popped off element to the stack
+    h160 = hash160(element)
     stack.append(h160)
     return True
 
@@ -671,6 +672,7 @@ def op_checksig(stack, z):
         point = S256Point.parse(sec_pubkey)
         sig = Signature.parse(der_signature)
     except (ValueError, SyntaxError) as e:
+        LOGGER.info(e)
         return False
     # verify the signature using S256Point.verify()
     # push an encoded 1 or 0 depending on whether the signature verified
@@ -699,18 +701,29 @@ def op_checkmultisig(stack, z):
         return False
     der_signatures = []
     for _ in range(m):
+        # signature is assumed to be using SIGHASH_ALL
         der_signatures.append(stack.pop()[:-1])
+    # OP_CHECKMULTISIG bug
     stack.pop()
     try:
+        # parse all the points
         points = [S256Point.parse(sec) for sec in sec_pubkeys]
+        # parse all the signatures
         sigs = [Signature.parse(der) for der in der_signatures]
+        # loop through the signatures
         for sig in sigs:
+            # if we have no more points, signatures are no good
             if len(points) == 0:
+                LOGGER.info("signatures no good or not in right order")
                 return False
+            # we loop until we find the point which works with this signature
             while points:
+                # get the current point from the list of points
                 point = points.pop(0)
+                # we check if this signature goes with the current point
                 if point.verify(z, sig):
                     break
+        # the signatures are valid, so push a 1 to the stack
         stack.append(encode_num(1))
     except (ValueError, SyntaxError):
         return False
@@ -810,7 +823,6 @@ OP_CODE_FUNCTIONS = {
     146: op_0notequal,
     147: op_add,
     148: op_sub,
-    149: op_mul,
     154: op_booland,
     155: op_boolor,
     156: op_numequal,
@@ -903,7 +915,6 @@ OP_CODE_NAMES = {
     146: 'OP_0NOTEQUAL',
     147: 'OP_ADD',
     148: 'OP_SUB',
-    149: 'OP_MUL',
     154: 'OP_BOOLAND',
     155: 'OP_BOOLOR',
     156: 'OP_NUMEQUAL',
