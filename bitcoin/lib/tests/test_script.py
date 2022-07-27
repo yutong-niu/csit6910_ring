@@ -1,7 +1,9 @@
 import setup
 from unittest import TestCase
 from io import BytesIO
-from script import Script
+
+from script import *
+
 
 class ScriptTest(TestCase):
 

@@ -7,7 +7,6 @@ from helper import (
     little_endian_to_int,
     read_varint,
 )
-
 from op import (
     op_equal,
     op_hash160,
@@ -16,11 +15,19 @@ from op import (
     OP_CODE_NAMES,
 )
 
+
 def p2pkh_script(h160):
     '''Takes a hash160 and returns the p2pkh ScriptPubKey'''
     return Script([0x76, 0xa9, h160, 0x88, 0xac])
 
+
+def p2sh_script(h160):
+    '''Takes a hash160 and returns the p2sh ScriptPubKey'''
+    return Script([0xa9, h160, 0x87])
+
+
 LOGGER = getLogger(__name__)
+
 
 class Script:
 
@@ -28,10 +35,8 @@ class Script:
         if cmds is None:
             self.cmds = []
         else:
-            # each command is either an opcode or
-            # an element to be pushed onto the stack
             self.cmds = cmds
-    
+
     def __repr__(self):
         result = []
         for cmd in self.cmds:
@@ -44,9 +49,8 @@ class Script:
             else:
                 result.append(cmd.hex())
         return ' '.join(result)
-    
+
     def __add__(self, other):
-        # return the combined Script object
         return Script(self.cmds + other.cmds)
 
     @classmethod
@@ -129,7 +133,6 @@ class Script:
         total = len(result)
         # encode_varint the total length of the result and prepend
         return encode_varint(total) + result
-    
 
     def evaluate(self, z):
         # create a copy as we may need to add to this list if we have a
