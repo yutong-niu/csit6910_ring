@@ -5,6 +5,8 @@ SIGHASH_ALL = 1
 SIGHASH_NONE = 2
 SIGHASH_SINGLE = 3
 BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+TWO_WEEKS = 60 * 60 * 24 * 14
+MAX_TARGET = 0xffff * 256**(0x1d - 3)
 
 
 def hash160(s):
@@ -112,3 +114,52 @@ def h160_to_p2sh_address(h160, testnet=False):
     else:
         prefix = b'\x05'
     return encode_base58_checksum(prefix + h160)
+
+
+def bits_to_target(bits):
+    '''Turns bits into a target (large 256-bit integer)'''
+    # last byte is exponent
+    exponent = bits[-1]
+    # the first three bytes are the coefficient in little endian
+    coefficient = little_endian_to_int(bits[:-1])
+    # the formula is:
+    # coefficient * 256**(exponent-3)
+    return coefficient * 256**(exponent - 3)
+
+
+def target_to_bits(target):
+    '''Turns a target integer back into bits, which is 4 bytes'''
+    raw_bytes = target.to_bytes(32, 'big')
+    # get rid of leading 0's
+    raw_bytes = raw_bytes.lstrip(b'\x00')
+    if raw_bytes[0] > 0x7f:
+        # if the first bit is 1, we have to start with 00
+        exponent = len(raw_bytes) + 1
+        coefficient = b'\x00' + raw_bytes[:2]
+    else:
+        # otherwise, we can show the first 3 bytes
+        # exponent is the number of digits in base-256
+        exponent = len(raw_bytes)
+        # coefficient is the first 3 digits of the base-256 number
+        coefficient = raw_bytes[:3]
+    # we've truncated the number after the first 3 digits of base-256
+    new_bits = coefficient[::-1] + bytes([exponent])
+    return new_bits
+
+
+def calculate_new_bits(previous_bits, time_differential):
+    '''Calculates the new bits given
+    a 2016-block time differential and the previous bits'''
+    # if the time differential is greater than 8 weeks, set to 8 weeks
+    if time_differential > TWO_WEEKS * 4:
+        time_differential = TWO_WEEKS * 4
+    # if the time differential is less than half a week, set to half a week
+    if time_differential < TWO_WEEKS // 4:
+        time_differential = TWO_WEEKS // 4
+    # the new target is the previous target * time differential / two weeks
+    new_target = bits_to_target(previous_bits) * time_differential // TWO_WEEKS
+    # if the new target is bigger than MAX_TARGET, set to MAX_TARGET
+    if new_target > MAX_TARGET:
+        new_target = MAX_TARGET
+    # convert the new target to bits
+    return target_to_bits(new_target)
