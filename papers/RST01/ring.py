@@ -1,6 +1,5 @@
 import hashlib
 import random
-import Crypto.PublicKey.RSA
 
 import functools
 

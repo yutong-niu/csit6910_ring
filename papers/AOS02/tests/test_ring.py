@@ -11,24 +11,21 @@ from unittest import TestCase
 from ring import *
 
 class RingTest(TestCase):
-
-    def test_ring(self):
-        size = 4
+    def test_rsa(self):
+        size = 2
         msg1, msg2 = "hello", "world!"
-        
         
         def _rn(_):
             return Crypto.PublicKey.RSA.generate(1024, os.urandom)
-        
-        
+
         key = map(_rn, range(size))
         key = list(key)
-        
-        r = Ring(key)
-        
+
+        ring = AOSRing(key)
+
         for i in range(size):
-            signature_1 = r.sign_message(msg1, i)
-            signature_2 = r.sign_message(msg2, i)
-            self.assertTrue(r.verify_message(msg1, signature_1))
-            self.assertTrue(r.verify_message(msg2, signature_2))
-            self.assertFalse(r.verify_message(msg1, signature_2))
+            signature_1 = ring.sign(msg1, i)
+            signature_2 = ring.sign(msg2, i)
+            self.assertTrue(ring.verify(msg1, signature_1))
+            self.assertTrue(ring.verify(msg2, signature_2))
+            self.assertFalse(ring.verify(msg1, signature_2))
