@@ -29,7 +29,7 @@ class AOSRing:
     def H(self, m, e):
         h = hashlib.sha1(self.L)
         h.update(m.encode('utf-8'))
-        h.update(e.to_bytes(self.l * 10, 'big'))
+        h.update(e.to_bytes(self.l, 'big'))
         return int(h.hexdigest(),16)
     
     def sign(self, m, z):
