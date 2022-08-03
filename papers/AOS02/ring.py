@@ -47,13 +47,13 @@ class AOSRing:
     def Z(r, c, k):
         if not isinstance(k, EccKey):
             raise TypeError('Only ECC key is allowed')
-        return (r - c * k.secret) % EccOrder
+        return (r + c * k.secret) % EccOrder
     
     @staticmethod
     def V(s, c, k):
         if not isinstance(k, EccKey):
             raise TypeError('Only ECC key is allowed')
-        return s * EccGenerator + c * k.point
+        return s * EccGenerator - c * k.point
     
     def H(self, m, e):
         h = hashlib.sha1(self.L)

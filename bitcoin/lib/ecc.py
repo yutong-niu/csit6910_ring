@@ -201,6 +201,9 @@ class S256Point(Point):
             return 'S256Point(infinity)'
         else:
             return 'S256Point({}, {})'.format(self.x, self.y)
+    
+    def __sub__(self, other):
+        return self + self.__class__(other.x,  S256Field(0)-other.y)
 
     def __rmul__(self, coefficient):
         coef = coefficient % N
