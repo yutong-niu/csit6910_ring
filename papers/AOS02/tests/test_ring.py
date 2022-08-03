@@ -12,7 +12,7 @@ from ring import *
 
 class RingTest(TestCase):
     def test_rsa(self):
-        size = 2
+        size = 4
         msg1, msg2 = "hello", "world!"
         
         def _rn(_):

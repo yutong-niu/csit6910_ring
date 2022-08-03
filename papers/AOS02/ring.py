@@ -20,13 +20,17 @@ class AOSRing:
 
     @staticmethod
     def F(s, k):
+        if not isinstance(k, Crypto.PublicKey.RSA.RsaKey):
+            raise TypeError('Only RSA key is allowed')
         return pow(s, k.e, k.n)
     
     @staticmethod
     def I(c, k):
+        if not isinstance(k, Crypto.PublicKey.RSA.RsaKey):
+            raise TypeError('Only RSA key is allowed')
         return pow(c, k.d, k.n)
     
-    def H(self, m, e):
+    def Hash(self, m, e):
         h = hashlib.sha1(self.L)
         h.update(m.encode('utf-8'))
         h.update(e.to_bytes(self.l, 'big'))
@@ -41,8 +45,8 @@ class AOSRing:
         if isinstance(self.k[z], Crypto.PublicKey.RSA.RsaKey):
             e[z] = random.randint(0, self.q)
         else:
-            raise RuntimeError
-        c[(z+1) % self.n] = self.H(m, e[z])
+            raise TypeError('Only RSA key is allowed')
+        c[(z+1) % self.n] = self.Hash(m, e[z])
 
         ## Forward sequence
         first_range = list(range(z + 1, self.n))
@@ -54,14 +58,14 @@ class AOSRing:
             if isinstance(self.k[i], Crypto.PublicKey.RSA.RsaKey):
                 e[i] = c[i] + self.F(s[i], self.k[i])
             else:
-                raise RuntimeError
-            c[(i+1) % self.n] = self.H(m, e[i])
+                raise TypeError('Only RSA key is allowed')
+            c[(i+1) % self.n] = self.Hash(m, e[i])
         
         ## Forming the ring
         if isinstance(self.k[z], Crypto.PublicKey.RSA.RsaKey):
             s[z] = self.I(e[z] - c[z], self.k[z])
         else:
-            raise RuntimeError
+            raise TypeError('Only RSA key is allowed')
 
         return [c[0]] + s
 
@@ -74,5 +78,5 @@ class AOSRing:
             if isinstance(self.k[i], Crypto.PublicKey.RSA.RsaKey):
                 e[i] = c[i] + self.F(s[i], self.k[i])
             if i != self.n - 1:
-                c[i + 1] = self.H(m, e[i])
-        return c[0] == self.H(m, e[self.n - 1])
+                c[i + 1] = self.Hash(m, e[i])
+        return c[0] == self.Hash(m, e[self.n - 1])
