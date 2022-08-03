@@ -54,7 +54,11 @@ class BorromeanRing:
             k[i] = random.randint(0, EccOrder)
             m_i = len(self.rings[i])
             j_i = i_sk[i]
-            e[i][j_i+1] = self.H([M, k[i] * EccGenerator, i, j_i])
+            if j_i == m_i - 1:
+                hashin.append(k[i] * EccGenerator)
+                continue
+            else:
+                e[i][j_i+1] = self.H([M, k[i] * EccGenerator, i, j_i])
             for j in range(j_i+1, m_i-1):
                 s[i][j] = random.randint(0, EccOrder)
                 e[i][j+1] = self.H([
