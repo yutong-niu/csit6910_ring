@@ -8,13 +8,12 @@ from ecc import (
     N as EccOrder,
 )
 
-class LSAG:
+class Bac_LSAG:
 
     def __init__(self, k):
         self.k = k
         self.n = len(k)
         self.vk_serialize()
-        self.H2()
     
     def vk_serialize(self):
         self.L = b''
@@ -23,9 +22,10 @@ class LSAG:
                 raise TypeError('Only ECC key is allowed')
             self.L += key.point.sec()
     
-    def H2(self):
-        hashed_L = hashlib.sha1(self.L)
-        self.h = (int(hashed_L.hexdigest(), 16) % EccOrder) * EccGenerator
+    @staticmethod
+    def H_p(point):
+        hashed_p = hashlib.sha1(point.sec())
+        return (int(hashed_p.hexdigest(), 16) % EccOrder) * EccGenerator
 
     @staticmethod
     def H(l):
@@ -44,49 +44,43 @@ class LSAG:
         return int(h.hexdigest(), 16)
 
     def sign(self, m, z):
+        I = self.k[z].secret * self.H_p(self.k[z].point)
+        L = [None] * self.n
+        R = [None] * self.n
         c = [None] * self.n
-        s = [None] * self.n
-        y = self.k[z].secret * self.h
-        u = random.randint(0, EccOrder)
+        s = [random.randint(0, EccOrder) if i !=z else None for i in range(self.n)]
+        _alpha = random.randint(0, EccOrder)
 
-        c[(z+1) % self.n] = self.H([
-            self.L,
-            y,
-            m,
-            u * EccGenerator,
-            u * self.h
-        ])
+        L[z] = _alpha * EccGenerator
+        R[z] = _alpha * self.H_p(self.k[z].point)
+        c[(z+1) % self.n] = self.H([m, L[z], R[z]])
 
         first_range = list(range(z + 1, self.n))
         second_range = list(range(z))
         whole_range = first_range + second_range
 
         for i in whole_range:
-            s[i] = random.randint(0, EccOrder)
-            c[(i + 1) % self.n] = self.H([
-                self.L,
-                y,
-                m,
-                s[i] * EccGenerator + c[i] * self.k[i].point,
-                s[i] * self.h + c[i] * y,
-            ])
-        s[z] = (u - self.k[z].secret*c[z]) % EccOrder
+            L[i] = s[i] * EccGenerator + c[i] * self.k[i].point
+            R[i] = s[i] * self.H_p(self.k[i].point) + c[i] * I
+            c[(i+1) % self.n] = self.H([m, L[i], R[i]])
+        
+        s[z] = (_alpha - c[z] * self.k[z].secret) % EccOrder
 
-        return [c[0]] + s + [y]
+        return [I] + [c[0]]+ s
     
     def verify(self, m, sig):
-        c0 = sig[0]
-        s = sig[1:-1]
+        I = sig[0]
+        c0 = sig[1]
+        s = sig[2:]
         c = [None] * (self.n + 1)
+        L = [None] * self.n
+        R = [None] * self.n
+
         c[0] = c0
-        y = sig[-1]
 
         for i in range(self.n):
-            c[i+1] = self.H([
-                self.L,
-                y,
-                m,
-                s[i] * EccGenerator + c[i] * self.k[i].point,
-                s[i] * self.h + c[i] * y,
-            ])
-        return c0 == c[self.n]
+            L[i] = s[i] * EccGenerator + c[i] * self.k[i].point
+            R[i] = s[i] * self.H_p(self.k[i].point) + c[i] *I
+            c[i+1] = self.H([m, L[i], R[i]])
+
+        return c[0] == c[self.n]
