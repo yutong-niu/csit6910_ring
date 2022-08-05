@@ -209,6 +209,9 @@ class S256Point(Point):
         coef = coefficient % N
         return super().__rmul__(coef)
 
+    def __hash__(self):
+        return int(hashlib.sha1(self.sec()).hexdigest(), 16)
+
     def verify(self, z, sig):
         # By Fermat's Little Theorem, 1/s = pow(s, N-2, N)
         s_inv = pow(sig.s, N - 2, N)
