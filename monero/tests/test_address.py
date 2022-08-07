@@ -32,7 +32,7 @@ class UserKeysTest(TestCase):
     def test_pubKey(self):
         user = UserKeys.generate()
         pubkey = user.getPubKey()
-        self.assertTrue(len(pubkey) == 2)
+        self.assertTrue(len(pubkey) == 3)
         self.assertTrue(isinstance(pubkey, tuple))
         self.assertTrue(isinstance(pubkey[0], EccPubKey))
         self.assertTrue(isinstance(pubkey[1], EccPubKey))
@@ -89,3 +89,39 @@ class UserKeysTest(TestCase):
 
             sig = EccKeyPair(secret).sign(hashed_msg)
             self.assertTrue(oneTimeAddresses[i][1].verify(hashed_msg, sig))
+    
+    def test_subAddrOneTimeAddr(self):
+        size = 10
+        user = UserKeys.generate()
+        subSpendKeys = []
+        oneTimeAddresses = []
+        for i in range(size):
+            subKey = user.generateSub(i)
+            oneTimeAddr = subKey.generateOneTimeAddr(subKey.getPubKey())
+            subSpendKeys.append(subKey.spend.point)
+            oneTimeAddresses.append(oneTimeAddr)
+        
+        for oneTimeAddr in oneTimeAddresses:
+            self.assertTrue(user.ownsOneTimeAddr(oneTimeAddr, subSpendKeys=subSpendKeys))
+        
+        for i in range(size):
+            secret = user.generateOneTimeSecret(oneTimeAddresses[i], subSpendKeys=subSpendKeys)
+            self.assertTrue(secret * EccGenerator == oneTimeAddresses[i][1])
+    
+    def test_subAddrOneTimeAddrMultiOut(self):
+        size = 4
+        user = UserKeys.generate()
+        subSpendKeys = []
+        subKeys = []
+        for i in range(size):
+            subkey = user.generateSub(i)
+            subKeys.append(subkey)
+            subSpendKeys.append(subkey.spend.point)
+            
+        oneTimeAddresses = UserKeys.generateOneTimeAddrMultiOut([k.getPubKey() for k in subKeys])
+        self.assertTrue(len(oneTimeAddresses) == size)
+        for i in range(size):
+            self.assertTrue(user.ownsOneTimeAddr(oneTimeAddresses[i]))
+            secret = user.generateOneTimeSecret(oneTimeAddresses[i]) 
+            self.assertTrue(secret * EccGenerator == oneTimeAddresses[i][1])
+        self.assertTrue(len(user.subSpendKeys) == 4)
