@@ -68,3 +68,24 @@ class UserKeysTest(TestCase):
             sig = EccKeyPair(s).sign(hashed_msg)
 
             self.assertTrue(p.verify(hashed_msg, sig))        
+    
+    def test_oneTimeAddrMultiOut(self):
+        size = 4
+        users = []
+        for i in range(size):
+            users.append(UserKeys.generate())
+
+        pubKeys = [user.getPubKey() for user in users]
+
+        oneTimeAddresses = UserKeys.generateOneTimeAddrMultiOut(pubKeys)
+
+        for i in range(size): 
+            self.assertTrue(users[i].ownsOneTimeAddr(oneTimeAddresses[i]))
+
+            secret = users[i].generateOneTimeSecret(oneTimeAddresses[i])
+
+            msg = "hello"
+            hashed_msg = int(hashlib.sha256(msg.encode('utf-8')).hexdigest(), 16)
+
+            sig = EccKeyPair(secret).sign(hashed_msg)
+            self.assertTrue(oneTimeAddresses[i][1].verify(hashed_msg, sig))
