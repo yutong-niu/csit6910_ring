@@ -79,7 +79,7 @@ class UserKeys:
         return (self.view.point, self.spend.point, self.sub)
 
     @classmethod
-    def generateOneTimeAddr(cls, pubKeyPair, sub=False):
+    def generateOneTimeAddr(cls, pubKeyPair, r=None, sub=False):
         # generate one time address
         # taking pubkey pair as input
         # output: tx pubkey and one-time address
@@ -90,7 +90,8 @@ class UserKeys:
         else:
             raise TypeError("pubKeyPair has invalid len")
         # generate random number
-        r = random.randint(1, EccOrder)
+        if r is None:
+            r = random.randint(1, EccOrder)
         # K = H(r * K_v) * G + K_s
         K = cls.H_n(r * K_v) * EccGenerator + K_s
 
@@ -102,14 +103,15 @@ class UserKeys:
 
 
     @classmethod
-    def generateOneTimeAddrMultiOut(cls, pubKeyPairs):
+    def generateOneTimeAddrMultiOut(cls, pubKeyPairs, r=None):
         # generate one time address
         # . for multiple tx outputs
         # taking list of pubkey pairs as input
         # output: list of
         # .       (tx pubkey, one-time addr, tx index)
         # tx pubkey = r * G
-        r = random.randint(1, EccOrder)
+        if r is None:
+            r = random.randint(1, EccOrder)
 
         p = len(pubKeyPairs)
         oneTimeAddresses = []
