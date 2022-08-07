@@ -8,8 +8,6 @@ from ecc import (
     N as EccOrder,
 )
 
-H_n = hashlib.sha256
-
 class UserKeys:
     """
     Users have two sets of private/public keys
