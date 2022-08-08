@@ -1,4 +1,5 @@
 import random
+from ring import MLSAG
 from address import UserKeys
 from ecc import (
     PrivateKey as EccKey,
@@ -16,11 +17,21 @@ H_n = UserKeys.H_n
 
 H = 8 * EccKey(H_n([EccGenerator])).point
 
+RING_SIZE = 6
+
 """
 helper function
 """
 def first_eight_bytes(x):
     return int(format(x, 'x')[:16], 16)
+
+def searchOneTimeAddr(oneTimeAddr):
+#    raise RuntimeError("not implemented")
+    pass
+
+def selectOneTimeAddr():
+#    raise RuntimeError("not implemented")
+    pass
     
 class Commit(EccPoint):
     def __init__(self, y, b):
@@ -58,7 +69,74 @@ class TxIn:
     3. key image (part of ring sig)
     4. signature (ring signature)
     """
-    pass
+
+    def __init__(self, ring, pseudoOut, keyImage, sig):
+        # ring has the size 6 * 2
+        self.ring = ring
+        self.pseudoOut = pseudoOut
+        self.keyImage = keyImage
+        # (I + c0 + s)
+        # I has size 2
+        # c0 is a hash256 int
+        # s has size 6 * 2
+        self.sig = sig
+    
+    @classmethod
+    def generateUnsigned(cls, oneTimeAddr, user, t=0, pseudoMask=None):
+        prevOut = searchOneTimeAddr(oneTimeAddr)
+        if not user.ownsOneTimeAddr((prevOut.txPubKey, prevOut.oneTimeAddr, t)):
+            raise RuntimeError("user does NOT own prevOut")
+        
+        # calculate pseudo out commit
+        if pseudoMask is None:
+            pseudoMask = random.randint(1, EccOrder)
+        b = prevOut.commit.resolve(
+            txPubKey = prevOut.txPubKey,
+            amount = prevOut.amount,
+            k_v = user.view.secret,
+            t = t,
+        )
+        pseudoOut = pseudoMask * EccGenerator + b * H
+
+        # construct ring
+        ring = [None] * RING_SIZE
+        _pi = random.randint(0, RING_SIZE - 1)
+        ring[_pi] = [oneTimeAddr, prevOut.commit - pseudoOut]
+        for i in range(len(ring)):
+            while ring[i] is None:
+                randomOneTimeAddr = selectOneTimeAddr()
+                if randomOneTimeAddr not in [_[0] for _ in ring if _ is not None]:
+                    randomOut = searchOneTimeAddr(randomOneTimeAddr)
+                    ring[i] = [randomOneTimeAddr, randomOut.commit - pseudoOut]
+        
+        # skip sig since the input is unsigned
+        sig = None 
+
+        # add key Image
+        keyImage = user.generateOneTimeSecret((prevOut.txPubKey, oneTimeAddr, t)) * \
+            MLSAG.H_p(oneTimeAddr)
+
+        return cls(ring, pseudoOut, keyImage, sig)
+    
+    def sign(self, oneTimeAddr, user, m, pseudoMask, t=0):
+        if self.sig is not None:
+            raise RuntimeError("cannot re-sign TxIn")
+        prevOut = searchOneTimeAddr(oneTimeAddr)
+        if not user.ownsOneTimeAddr((prevOut.txPubKey, prevOut.oneTimeAddr, t)):
+            raise RuntimeError("user does NOT own prevOut")
+        prevMask = H_n(["commitment_mask", H_n([user.view.secret * prevOut.txPubKey, t])])
+        secrets = [user.generateOneTimeSecret((prevOut.txPubKey, oneTimeAddr, t)), (prevMask - pseudoMask) % EccOrder]
+
+        _pi = [_[0] for _ in self.ring].index(oneTimeAddr)
+
+        self.sig = MLSAG(self.ring).sign(m, _pi, secrets)
+    
+    def verify(self, m):
+        if self.sig is None:
+            raise RuntimeError("cannot verify unsigned TxIn")
+        return MLSAG(self.ring).verify(m, self.sig)
+
+        
 
 class TxOut:
     """

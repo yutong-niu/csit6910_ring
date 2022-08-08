@@ -2,12 +2,14 @@ import time
 import setup
 import random
 from unittest import TestCase
+import tx
 from tx import *
 from address import UserKeys
 from io import BytesIO
 
 class TxTest(TestCase):
 
+    """
     def test_commit(self):
         user = UserKeys.generate()
         r = random.randint(1, EccOrder)
@@ -64,3 +66,50 @@ class TxTest(TestCase):
         out2_serialized = out2.serialize()
         out2_parsed = TxOut.parse(BytesIO(out2_serialized))
         self.assertTrue(out2 == out2_parsed)
+    
+    """
+    def test_TxIn(self):
+        user = UserKeys.generate()
+        outs =[]
+        ts = []
+        oneTimeAddresses = []
+        for i in range(10):
+            r = random.randint(1, EccOrder)
+            t = random.randint(0, 4)
+            b = random.randint(0, 0xffffffffffffffff)
+            out = TxOut.generate(
+                b = b,
+                pubKeyPair=user.getPubKey(),
+                r = r,
+                t = t,
+            )
+            outs.append(out)
+            oneTimeAddresses.append(out.oneTimeAddr)
+            ts.append(t)
+
+
+        def searchOneTimeAddr(oneTimeAddress):
+            i = oneTimeAddresses.index(oneTimeAddress)
+            return outs[i]
+        
+        def selectOneTimeAddr():
+            return outs[random.randint(0, 9)].oneTimeAddr
+
+        tx.searchOneTimeAddr = searchOneTimeAddr
+        tx.selectOneTimeAddr = selectOneTimeAddr
+
+        inAddress = selectOneTimeAddr()
+
+        t = ts[oneTimeAddresses.index(inAddress)]
+        pseudoMask = random.randint(1, EccOrder)
+        tx_in = TxIn.generateUnsigned(
+            oneTimeAddr=inAddress,
+            user = user,
+            t = t,
+            pseudoMask = pseudoMask,
+        )
+
+        m = "hello"
+        tx_in.sign(inAddress, user, "hello", pseudoMask, t=t)
+        self.assertTrue(tx_in.verify(m))
+        
