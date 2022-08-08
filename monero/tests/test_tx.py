@@ -4,6 +4,7 @@ import random
 from unittest import TestCase
 from tx import *
 from address import UserKeys
+from io import BytesIO
 
 class TxTest(TestCase):
 
@@ -56,3 +57,10 @@ class TxTest(TestCase):
         
         self.assertTrue(out1.commit == y1 * EccGenerator + b * H)
         self.assertTrue(out2.commit == y2 * EccGenerator + b * H)
+
+        out1_serialized = out1.serialize()
+        out1_parsed = TxOut.parse(BytesIO(out1_serialized))
+        self.assertTrue(out1 == out1_parsed)
+        out2_serialized = out2.serialize()
+        out2_parsed = TxOut.parse(BytesIO(out2_serialized))
+        self.assertTrue(out2 == out2_parsed)

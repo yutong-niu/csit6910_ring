@@ -7,6 +7,11 @@ from ecc import (
     N as EccOrder,
 )
 
+from helper import (
+    int_to_little_endian,
+    little_endian_to_int,
+)
+
 H_n = UserKeys.H_n
 
 H = 8 * EccKey(H_n([EccGenerator])).point
@@ -44,6 +49,17 @@ class Commit(EccPoint):
 
         return self.__class__(new_y, b)
 
+class TxIn:
+    """
+    Transaction Input
+
+    1. ring (list of one-time address from previous output)
+    2. pseudo output commitment (sum of which equals to sum of output commitments)
+    3. key image (part of ring sig)
+    4. signature (ring signature)
+    """
+    pass
+
 class TxOut:
     """
     Transaction output
@@ -60,6 +76,13 @@ class TxOut:
         self.amount = amount
         self.commit = commit
     
+    def __eq__(self, other):
+        return (
+            self.oneTimeAddr == other.oneTimeAddr and
+            self.txPubKey == other.txPubKey and
+            self.amount == other.amount and
+            self.commit == other.commit
+        )
     @classmethod
     def generate(cls, b, pubKeyPair, t=0, r=None, sub=False):
         if r is None:
@@ -84,6 +107,29 @@ class TxOut:
             t = t,
         )
         return cls(oneTimeAddr, txPubKey, amount, commit)
+    
+
+    @classmethod
+    def parse(cls, s):
+        # Takes a byte stream and parses the tx_output
+        # and return a TxOut Object
+        oneTimeAddress = EccPoint.parse(s.read(33))
+        txPubKey = EccPoint.parse(s.read(33))
+        commit = EccPoint.parse(s.read(33))
+        amount = little_endian_to_int(s.read(8))
+
+        return cls(oneTimeAddress, txPubKey, amount, commit)
+
+    def serialize(self):
+        # returns the byte serialization of the transaction output
+        # the result will be static 107 bytes
+        # 33 + 33 + 33 + 8
+        result = self.oneTimeAddr.sec()
+        result += self.txPubKey.sec()
+        result += self.commit.sec()
+        result += int_to_little_endian(self.amount, 8)
+        return result
+
     
     def revealCommitMask(self, k_v, t):
         return H_n(["commitment_mask", H_n([k_v * self.txPubKey, t])])
