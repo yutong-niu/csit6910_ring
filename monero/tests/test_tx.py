@@ -9,7 +9,6 @@ from io import BytesIO
 
 class TxTest(TestCase):
 
-    """
     def test_commit(self):
         user = UserKeys.generate()
         r = random.randint(1, EccOrder)
@@ -67,7 +66,6 @@ class TxTest(TestCase):
         out2_parsed = TxOut.parse(BytesIO(out2_serialized))
         self.assertTrue(out2 == out2_parsed)
     
-    """
     def test_TxIn(self):
         user = UserKeys.generate()
         outs =[]
@@ -108,8 +106,18 @@ class TxTest(TestCase):
             t = t,
             pseudoMask = pseudoMask,
         )
+        unsigned_serialized = tx_in.serialize_unsigned()
+        self.assertTrue(len(unsigned_serialized) == 462)
+        tx_in_parsed = TxIn.parse_unsigned(BytesIO(unsigned_serialized))
+        self.assertTrue(tx_in == tx_in_parsed)
+
 
         m = "hello"
         tx_in.sign(inAddress, user, "hello", pseudoMask, t=t)
         self.assertTrue(tx_in.verify(m))
-        
+
+       
+        serialized = tx_in.serialize()
+        self.assertTrue(len(serialized) == 944)
+        tx_in_parsed = TxIn.parse(BytesIO(serialized))
+        self.assertTrue(tx_in == tx_in_parsed)

@@ -1,4 +1,5 @@
 import random
+from io import BytesIO
 from ring import MLSAG
 from address import UserKeys
 from ecc import (
@@ -81,6 +82,21 @@ class TxIn:
         # s has size 6 * 2
         self.sig = sig
     
+    def __eq__(self, other):
+        result = True
+        for i in range(RING_SIZE):
+            for j in range(2):
+                if not self.ring[i][j] == other.ring[i][j]:
+                    result = False
+
+        if not self.pseudoOut == other.pseudoOut:
+            result = False
+        if not self.keyImage == other.keyImage:
+            result = False
+        if not self.sig == other.sig:
+            result = False
+        return result
+    
     @classmethod
     def generateUnsigned(cls, oneTimeAddr, user, t=0, pseudoMask=None):
         prevOut = searchOneTimeAddr(oneTimeAddr)
@@ -118,6 +134,75 @@ class TxIn:
 
         return cls(ring, pseudoOut, keyImage, sig)
     
+    @classmethod
+    def parse_unsigned(cls, s):
+        ring = [[None for i in range(2)] for j in range(RING_SIZE)]
+        for i in range(RING_SIZE):
+            for j in range(2):
+                ring[i][j] = EccPoint.parse(s.read(33))
+        pseudoOut = EccPoint.parse(s.read(33))
+        keyImage = EccPoint.parse(s.read(33))
+
+        return cls(ring=ring, pseudoOut=pseudoOut, keyImage=keyImage, sig=None)
+    
+    @classmethod
+    def parse(cls, stream):
+        unsigned = cls.parse_unsigned(BytesIO(stream.read(462)))
+        I = [None] * 2
+        for i in range(2):
+            I[i] = EccPoint.parse(stream.read(33))
+        c0 = little_endian_to_int(stream.read(32))
+        s = [[None for i in range(2)] for j in range(RING_SIZE)]
+        for i in range(RING_SIZE):
+            for j in range(2):
+                s[i][j] = little_endian_to_int(stream.read(32))
+        unsigned.sig = I + [c0] + s 
+
+        return unsigned
+
+    
+    def serialize_unsigned(self):
+        # returns serialization without sig
+        # includes only ring, pseuodoOut, keyImage
+        # ring has size 6 * 2; each is a one-time address(EccPoint)
+        #   size: 6 * 2 * 33bytes
+        # pseudoOut is a EccPoint
+        #   size: 33 bytes
+        # keyImage is a EccPoint
+        #   size: 33 bytes
+        # In total: 33 bytes * 14 = 462 bytes
+        result = b''
+        for i in range(RING_SIZE):
+            for j in range(2):
+                result += self.ring[i][j].sec()
+        result += self.pseudoOut.sec()
+        result += self.keyImage.sec()
+
+        return result
+    
+    def serialize(self):
+        # serialized unsigned: 462 bytes
+        # sig:
+        #   (I + c0 + s)
+        #   I has size 2 * 33 bytes
+        #   c0 is a hash256 int: 256 / 8 = 32 bytes
+        #   s has size 6 * 2, each has 32 bytes
+        #   sig total = 2 * 33 + 32 + 12 * 32 = 482 bytes
+        # Total: 462 bytes + 482 bytes = 944 bytes
+        result = self.serialize_unsigned()
+        I = self.sig[0:2]
+        c0 = self.sig[2]
+        s = self.sig[3:]
+        for i in range(2):
+            result += I[i].sec()
+        result += int_to_little_endian(c0, 32)
+        for i in range(RING_SIZE):
+            for j in range(2):
+                result += int_to_little_endian(s[i][j], 32)
+        
+        return result
+
+
     def sign(self, oneTimeAddr, user, m, pseudoMask, t=0):
         if self.sig is not None:
             raise RuntimeError("cannot re-sign TxIn")
