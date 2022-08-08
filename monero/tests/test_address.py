@@ -118,7 +118,7 @@ class UserKeysTest(TestCase):
             subKeys.append(subkey)
             subSpendKeys.append(subkey.spend.point)
             
-        oneTimeAddresses = UserKeys.generateOneTimeAddrMultiOut([k.getPubKey() for k in subKeys])
+        oneTimeAddresses = UserKeys.generateMultiOneTimeAddrMultiOut([k.getPubKey() for k in subKeys])
         self.assertTrue(len(oneTimeAddresses) == size)
         for i in range(size):
             self.assertTrue(user.ownsOneTimeAddr(oneTimeAddresses[i]))
