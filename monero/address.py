@@ -1,5 +1,6 @@
 import random
 import hashlib
+from typing import Type
 
 from ecc import (
     PrivateKey as EccKeyPair,
@@ -103,7 +104,25 @@ class UserKeys:
 
 
     @classmethod
-    def generateOneTimeAddrMultiOut(cls, pubKeyPairs, r=None):
+        # generate one time address
+        # for multiple tx outputs
+    def generateOneTimeAddrMultiOut(cls, pubKeyPair, t, r=None, sub=False):
+        if r is None:
+            r = random.randint(1, EccOrder)
+        if len(pubKeyPair) == 2:
+            (K_v, K_s) = pubKeyPair
+        elif len(pubKeyPair) == 3:
+            (K_v, K_s, sub) = pubKeyPair
+        else:
+            raise TypeError("pubKeyPai has invalid len")
+        K = cls.H_n([r * K_v, t]) * EccGenerator + K_s 
+        if sub:
+            return (r * K_s, K)
+        else:
+            return (r * EccGenerator, K)
+
+    @classmethod
+    def generateMultiOneTimeAddrMultiOut(cls, pubKeyPairs, r=None):
         # generate one time address
         # . for multiple tx outputs
         # taking list of pubkey pairs as input

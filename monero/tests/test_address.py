@@ -69,7 +69,7 @@ class UserKeysTest(TestCase):
 
             self.assertTrue(p.verify(hashed_msg, sig))        
     
-    def test_oneTimeAddrMultiOut(self):
+    def test_multiOneTimeAddrMultiOut(self):
         size = 4
         users = []
         for i in range(size):
@@ -77,7 +77,7 @@ class UserKeysTest(TestCase):
 
         pubKeys = [user.getPubKey() for user in users]
 
-        oneTimeAddresses = UserKeys.generateOneTimeAddrMultiOut(pubKeys)
+        oneTimeAddresses = UserKeys.generateMultiOneTimeAddrMultiOut(pubKeys)
 
         for i in range(size): 
             self.assertTrue(users[i].ownsOneTimeAddr(oneTimeAddresses[i]))
