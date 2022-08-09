@@ -284,3 +284,114 @@ class TxTest(TestCase):
         self.assertFalse(ten_input_one_output_tx.verify())
         self.assertTrue(ten_input_one_output_tx.fee == 2)
 
+
+    def test_MinerTx(self):
+        user = UserKeys.generate()
+        outs = []
+        ts = []
+        oneTimeAddresses = []
+        consumedImages = []
+
+        minerTx = Tx.generateMiner(pubKeyPair=user.getPubKey(), fee = 10)
+        self.assertTrue(minerTx.verify())
+        self.assertTrue(minerTx.tx_outs[0].amount == 110)
+        outs.append(minerTx.tx_outs[0])
+        ts.append(0)
+        oneTimeAddresses.append(minerTx.tx_outs[0].oneTimeAddr)
+
+        for i in range(5):
+            r = random.randint(1, EccOrder)
+            t = random.randint(0, 4)
+            b = 10
+            out = TxOut.generate(
+                b = b,
+                pubKeyPair=user.getPubKey(),
+                r = r,
+                t = t,
+            )
+            outs.append(out)
+            oneTimeAddresses.append(out.oneTimeAddr)
+            ts.append(t)
+
+        def searchOneTimeAddr(oneTimeAddress):
+            i = oneTimeAddresses.index(oneTimeAddress)
+            return outs[i]
+        
+        def selectOneTimeAddr():
+            return outs[random.randint(0, 5)].oneTimeAddr
+        
+        def searchOneTimeAddrIndex(oneTimeAddr):
+            return ts[oneTimeAddresses.index(oneTimeAddr)]
+        
+        def verifyKeyImage(keyImage):
+            return keyImage not in consumedImages
+        
+        
+        tx.searchOneTimeAddr = searchOneTimeAddr
+        tx.selectOneTimeAddr = selectOneTimeAddr
+        tx.searchOneTimeAddrIndex = searchOneTimeAddrIndex
+        tx.verifyKeyImage = verifyKeyImage
+
+
+        # test spend miner tx output
+        receiver = UserKeys.generate().getPubKey()
+
+        spend_miner_tx_output = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[0],
+            ],
+            outs = [
+                (receiver, 98)
+            ]
+        )
+
+        self.assertTrue(spend_miner_tx_output.verify())
+        self.assertTrue(spend_miner_tx_output.fee == 12)
+
+        # test spend miner tx output double spend
+        consumedImages.append(spend_miner_tx_output.tx_ins[0].keyImage)
+        double_spend_miner_tx_output = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[0],
+            ],
+            outs = [
+                (receiver, 90)
+            ]
+        )
+
+        self.assertFalse(double_spend_miner_tx_output.verify())
+        self.assertTrue(double_spend_miner_tx_output.fee == 20)
+        
+        consumedImages = []
+        # test spend miner tx output with normal output
+        blended_miner_normal = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[0],
+                oneTimeAddresses[1]
+            ],
+            outs = [
+                (receiver, 118)
+            ]
+        )
+
+        self.assertTrue(blended_miner_normal.verify())
+        self.assertTrue(blended_miner_normal.fee == 2)
+
+        # test blend miner on the ring
+        miner_on_ring = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[1]
+            ],
+            outs = [
+                (receiver, 8)
+            ]
+        )
+
+        self.assertTrue(miner_on_ring.verify())
+        self.assertTrue(miner_on_ring.fee == 2)
+
+        self.assertTrue(oneTimeAddresses[0] in [i[0] for i in miner_on_ring.tx_ins[0].ring])

@@ -19,6 +19,7 @@ H_n = UserKeys.H_n
 H = 8 * EccKey(H_n([EccGenerator])).point
 
 RING_SIZE = 6
+MINER_REWARD = 100
 
 """
 helper function
@@ -43,7 +44,10 @@ def selectOneTimeAddr():
 class Commit(EccPoint):
     def __init__(self, y, b):
         p = y * EccGenerator + b * H
-        super().__init__(p.x, p.y)
+        return super().__init__(p.x, p.y)
+    
+    def __eq__(self, other):
+        return EccPoint.parse(self.sec()) == EccPoint.parse(other.sec())
     
     def __sub__(self, other):
         return EccPoint.parse(self.sec()) - EccPoint.parse(other.sec())
@@ -112,12 +116,18 @@ class TxIn:
         # calculate pseudo out commit
         if pseudoMask is None:
             pseudoMask = random.randint(1, EccOrder)
-        b = prevOut.commit.resolve(
-            txPubKey = prevOut.txPubKey,
-            amount = prevOut.amount,
-            k_v = user.view.secret,
-            t = t,
-        )
+        if prevOut.commit == Commit(1, prevOut.amount):
+            # miner tx output
+            b = prevOut.amount
+            t = 0
+        else:
+            # normal tx output
+            b = prevOut.commit.resolve(
+                txPubKey = prevOut.txPubKey,
+                amount = prevOut.amount,
+                k_v = user.view.secret,
+                t = t,
+            )
         pseudoOut = pseudoMask * EccGenerator + b * H
 
         # construct ring
@@ -215,7 +225,12 @@ class TxIn:
         prevOut = searchOneTimeAddr(oneTimeAddr)
         if not user.ownsOneTimeAddr((prevOut.txPubKey, prevOut.oneTimeAddr, t)):
             raise RuntimeError("user does NOT own prevOut")
-        prevMask = H_n(["commitment_mask", H_n([user.view.secret * prevOut.txPubKey, t])])
+        if prevOut.commit == Commit(1, prevOut.amount):
+            # miner tx output
+            prevMask = 1
+            t = 0
+        else:
+            prevMask = H_n(["commitment_mask", H_n([user.view.secret * prevOut.txPubKey, t])])
         secrets = [user.generateOneTimeSecret((prevOut.txPubKey, oneTimeAddr, t)), (prevMask - pseudoMask) % EccOrder]
 
         _pi = [_[0] for _ in self.ring].index(oneTimeAddr)
@@ -316,7 +331,7 @@ class Tx:
     4. fee: clear text
     """
     def __init__(self, type, tx_ins, tx_outs, fee):
-        if type == 0 and tx_ins is not None:
+        if type == 0 and len(tx_ins) != 0:
             raise ValueError("miner transaction cannot have tx_ins")
         self.type = type
         self.tx_ins = tx_ins
@@ -373,12 +388,16 @@ class Tx:
                     pseudoMask=pseudoMask,
             )
             prevOut = searchOneTimeAddr(oneTimeAddr)
-            b = prevOut.commit.resolve(
-                txPubKey = prevOut.txPubKey,
-                amount = prevOut.amount,
-                k_v = user.view.secret,
-                t = searchOneTimeAddrIndex(oneTimeAddr),
-            )
+            if prevOut.commit == Commit(1, prevOut.amount):
+                b = prevOut.amount
+                t = 0
+            else:
+                b = prevOut.commit.resolve(
+                    txPubKey = prevOut.txPubKey,
+                    amount = prevOut.amount,
+                    k_v = user.view.secret,
+                    t = searchOneTimeAddrIndex(oneTimeAddr),
+                )
             tx_in_amounts.append(b)
             tx_ins.append(tx_in)
         fee = sum(tx_in_amounts) - sum(tx_out_amounts)
@@ -408,24 +427,56 @@ class Tx:
 
         return tx
     
+    @classmethod
+    def generateMiner(cls, pubKeyPair, fee):
+        reward = MINER_REWARD
+        if reward < 0 or reward > 0xffffffffffffffff:
+            raise ValueError("Invalid miner reward value")
+        if fee < 0 or fee > 0xffffffffffffffff:
+            raise ValueError("Invalid fee reward value")
+        amount = reward + fee
+        if amount < 0 or amount > 0xffffffffffffffff:
+            raise ValueError("Invalid amount value")
+        
+        tx_out = TxOut.generate(
+            pubKeyPair=pubKeyPair,
+            b = 0,
+        )
+        tx_out.amount = amount
+        tx_out.commit = Commit(1, amount)
+        tx_outs = [tx_out]
+
+        tx_ins = []
+        type = 0
+        fee = 0
+
+        return cls(type, tx_ins, tx_outs, fee)
+    
+
     def verify(self):
-        m = self.serialize_unsigned()
-        for tx_in in self.tx_ins:
-            # verify sig
-            if not tx_in.verify(m):
+        if self.type == 1:
+            m = self.serialize_unsigned()
+            for tx_in in self.tx_ins:
+                # verify sig
+                if not tx_in.verify(m):
+                    return False
+                # verify key image (double spending)
+                if not verifyKeyImage(tx_in.keyImage):
+                    return False
+            # verify amount
+            commit_sum = 0 * EccGenerator
+            for i in self.tx_ins:
+                commit_sum += i.pseudoOut
+            for o in self.tx_outs:
+                commit_sum -= o.commit
+            if not commit_sum == self.fee * H:
                 return False
-            # verify key image (double spending)
-            if not verifyKeyImage(tx_in.keyImage):
-                return False
-        # verify amount
-        commit_sum = 0 * EccGenerator
-        for i in self.tx_ins:
-            commit_sum += i.pseudoOut
-        for o in self.tx_outs:
-            commit_sum -= o.commit
-        if not commit_sum == self.fee * H:
-            return False
-        return True
+            return True
+        elif self.type == 0:
+            return self.fee == 0 and len(self.tx_ins) == 0 and len(self.tx_outs) == 1 \
+                and self.tx_outs[0].commit == Commit(1, self.tx_outs[0].amount)
+        else:
+            raise TypeError("Invalid tx type")
         
         
     def serialize_unsigned(self):
