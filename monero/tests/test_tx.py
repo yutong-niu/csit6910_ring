@@ -9,7 +9,6 @@ from io import BytesIO
 
 class TxTest(TestCase):
 
-    """
     def test_commit(self):
         user = UserKeys.generate()
         r = random.randint(1, EccOrder)
@@ -122,7 +121,6 @@ class TxTest(TestCase):
         self.assertTrue(len(serialized) == 944)
         tx_in_parsed = TxIn.parse(BytesIO(serialized))
         self.assertTrue(tx_in == tx_in_parsed)
-        """
 
     def test_Tx(self):
         user = UserKeys.generate()
@@ -285,3 +283,4 @@ class TxTest(TestCase):
 
         self.assertFalse(ten_input_one_output_tx.verify())
         self.assertTrue(ten_input_one_output_tx.fee == 2)
+
