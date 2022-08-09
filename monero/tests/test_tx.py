@@ -232,7 +232,7 @@ class TxTest(TestCase):
             user = user,
             oneTimeAddresses=[
                 oneTimeAddresses[input],
-                oneTimeAddresses[input + 1]
+                oneTimeAddresses[(input + 1) % 10]
             ],
             outs = [
                 (receiver, 198)
@@ -246,7 +246,7 @@ class TxTest(TestCase):
             user = user,
             oneTimeAddresses=[
                 oneTimeAddresses[input],
-                oneTimeAddresses[input + 1]
+                oneTimeAddresses[(input + 1) % 10]
             ],
             outs = [
                 (receiver, 90),
@@ -395,3 +395,75 @@ class TxTest(TestCase):
         self.assertTrue(miner_on_ring.fee == 2)
 
         self.assertTrue(oneTimeAddresses[0] in [i[0] for i in miner_on_ring.tx_ins[0].ring])
+
+
+    def test_TxSerialization(self):
+        user = UserKeys.generate()
+        outs = []
+        ts = []
+        oneTimeAddresses = []
+        consumedImages = []
+
+        minerTx = Tx.generateMiner(pubKeyPair=user.getPubKey(), fee = 10)
+        self.assertTrue(minerTx.verify())
+        self.assertTrue(minerTx.tx_outs[0].amount == 110)
+        outs.append(minerTx.tx_outs[0])
+        ts.append(0)
+        oneTimeAddresses.append(minerTx.tx_outs[0].oneTimeAddr)
+
+        for i in range(5):
+            r = random.randint(1, EccOrder)
+            t = random.randint(0, 4)
+            b = 10
+            out = TxOut.generate(
+                b = b,
+                pubKeyPair=user.getPubKey(),
+                r = r,
+                t = t,
+            )
+            outs.append(out)
+            oneTimeAddresses.append(out.oneTimeAddr)
+            ts.append(t)
+
+        def searchOneTimeAddr(oneTimeAddress):
+            i = oneTimeAddresses.index(oneTimeAddress)
+            return outs[i]
+        
+        def selectOneTimeAddr():
+            return outs[random.randint(0, 5)].oneTimeAddr
+        
+        def searchOneTimeAddrIndex(oneTimeAddr):
+            return ts[oneTimeAddresses.index(oneTimeAddr)]
+        
+        def verifyKeyImage(keyImage):
+            return keyImage not in consumedImages
+        
+        
+        tx.searchOneTimeAddr = searchOneTimeAddr
+        tx.selectOneTimeAddr = selectOneTimeAddr
+        tx.searchOneTimeAddrIndex = searchOneTimeAddrIndex
+        tx.verifyKeyImage = verifyKeyImage
+
+
+        # test spend miner tx output
+        receiver = UserKeys.generate().getPubKey()
+
+        normalTx = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[0],
+            ],
+            outs = [
+                (receiver, 98)
+            ]
+        )
+
+        self.assertTrue(minerTx.verify())
+        minerTxSerialized = minerTx.serialize()
+        minerTxParsed = Tx.parse(BytesIO(minerTxSerialized))
+        self.assertTrue(minerTx == minerTxParsed)
+
+        self.assertTrue(normalTx.verify())
+        normalTxSerialized = normalTx.serialize()
+        normalTxParsed = Tx.parse(BytesIO(normalTxSerialized))
+        self.assertTrue(normalTx == normalTxParsed)

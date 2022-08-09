@@ -338,6 +338,26 @@ class Tx:
         self.tx_outs = tx_outs
         self.fee = fee
     
+    def __eq__(self, other):
+        if self.type != other.type:
+            return False
+        if self.fee != other.fee:
+            return False
+        in_len = len(self.tx_ins)
+        if in_len != len(other.tx_ins):
+            return False
+        for i in range(in_len):
+            if self.tx_ins[i] != other.tx_ins[i]:
+                return False
+        out_len = len(self.tx_outs)
+        if out_len != len(other.tx_outs):
+            return False
+        for i in range(out_len):
+            if self.tx_outs[i] != other.tx_outs[i]:
+                return False
+        return True
+
+
     @classmethod
     def generate(cls, user, oneTimeAddresses, outs):
         # inputs:
@@ -489,3 +509,61 @@ class Tx:
         for tx_out in self.tx_outs:
             result += tx_out.serialize()
         return H_n([result])
+    
+    def serialize(self):
+        result = b''
+        # 1 byte for type (0 or 1)
+        result += int_to_little_endian(self.type, 1)
+        # 8 bytes for tx fee
+        result += int_to_little_endian(self.fee, 8)
+        # 1 byte for input len
+        in_len = len(self.tx_ins)
+        if in_len < 0 or in_len > 0xff:
+            raise ValueError("Invalid input len")
+        result += int_to_little_endian(in_len, 1)
+        for i in range(in_len):
+            # each input has len 944 bytes
+            result += self.tx_ins[i].serialize()
+        out_len = len(self.tx_outs)
+        if out_len < 0 or out_len > 0xff:
+            raise ValueError("Invalid output len")
+        result += int_to_little_endian(out_len, 1)
+        for i in range(out_len):
+            # each output has len 107 bytes
+            result += self.tx_outs[i].serialize()
+
+        total_len = 1 + 8 + 1 + in_len * 944 + 1 + out_len * 107
+        if len(result) != total_len:
+            raise ValueError("error when serializing tx")
+        
+        return result
+
+    @classmethod
+    def parse(cls, s):
+        # 1 byte for type (0 or 1)
+        type = little_endian_to_int(s.read(1))
+        if type != 0 and type != 1:
+            raise ValueError("Tx type can only be 0 or 1")
+        # 8 bytes for tx fee
+        fee = little_endian_to_int(s.read(8))
+
+        in_len = little_endian_to_int(s.read(1))
+        tx_ins = []
+        if type == 0 and in_len != 0:
+            raise ValueError("Miner Tx cannot have non-zero inputs")
+        for i in range(in_len):
+            tx_ins.append(TxIn.parse(BytesIO(s.read(944))))
+        
+        out_len = little_endian_to_int(s.read(1))
+        tx_outs = []
+        if type == 0 and out_len != 1:
+            raise ValueError("Miner Tx can only have 1 output")
+        for i in range(out_len):
+            tx_outs.append(TxOut.parse(BytesIO(s.read(107))))
+        
+        return cls(
+            type = type,
+            tx_ins = tx_ins,
+            tx_outs = tx_outs,
+            fee = fee,
+        )
