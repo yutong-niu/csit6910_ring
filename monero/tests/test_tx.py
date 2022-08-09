@@ -9,6 +9,7 @@ from io import BytesIO
 
 class TxTest(TestCase):
 
+    """
     def test_commit(self):
         user = UserKeys.generate()
         r = random.randint(1, EccOrder)
@@ -121,3 +122,166 @@ class TxTest(TestCase):
         self.assertTrue(len(serialized) == 944)
         tx_in_parsed = TxIn.parse(BytesIO(serialized))
         self.assertTrue(tx_in == tx_in_parsed)
+        """
+
+    def test_Tx(self):
+        user = UserKeys.generate()
+        outs = []
+        ts = []
+        oneTimeAddresses = []
+        consumedImages = []
+        for i in range(10):
+            r = random.randint(1, EccOrder)
+            t = random.randint(0, 4)
+            b = 100
+            out = TxOut.generate(
+                b = b,
+                pubKeyPair=user.getPubKey(),
+                r = r,
+                t = t,
+            )
+            outs.append(out)
+            oneTimeAddresses.append(out.oneTimeAddr)
+            ts.append(t)
+        
+        def searchOneTimeAddr(oneTimeAddress):
+            i = oneTimeAddresses.index(oneTimeAddress)
+            return outs[i]
+        
+        def selectOneTimeAddr():
+            return outs[random.randint(0, 9)].oneTimeAddr
+        
+        def searchOneTimeAddrIndex(oneTimeAddr):
+            return ts[oneTimeAddresses.index(oneTimeAddr)]
+        
+        def verifyKeyImage(keyImage):
+            return keyImage not in consumedImages
+
+        tx.searchOneTimeAddr = searchOneTimeAddr
+        tx.selectOneTimeAddr = selectOneTimeAddr
+        tx.searchOneTimeAddrIndex = searchOneTimeAddrIndex
+        tx.verifyKeyImage = verifyKeyImage
+
+        # test 1 input 1 output with no fee
+        receiver = UserKeys.generate().getPubKey()
+        
+        input = random.randint(0, 9)
+        one_input_one_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input]
+            ],
+            outs = [
+                (receiver, 100)
+            ]
+        )
+
+        self.assertTrue(one_input_one_output_tx.verify())
+        self.assertTrue(one_input_one_output_tx.fee == 0)
+
+        # prevent double spending
+        for i in one_input_one_output_tx.tx_ins:
+            consumedImages.append(i.keyImage)
+        
+
+        receiver2 = UserKeys.generate().getPubKey()
+        one_input_one_output_double_spend = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input]
+            ],
+            outs = [
+                ((receiver2[0], receiver2[1]), 100)
+            ]
+        )
+
+        self.assertFalse(one_input_one_output_double_spend.verify())
+        self.assertTrue(one_input_one_output_double_spend.fee == 0)
+
+        
+        # fee calculation
+        consumedImages = []
+        fee_cal = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input]
+            ],
+            outs = [
+                (receiver2, 90)
+            ]
+        )        
+        self.assertTrue(fee_cal.verify())
+        self.assertTrue(fee_cal.fee == 10)
+
+        # one input 2 output
+        one_input_two_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input]
+
+            ],
+            outs = [
+                (receiver, 10),
+                (receiver2, 90)
+            ]
+        )
+
+        self.assertTrue(one_input_two_output_tx.verify())
+        self.assertTrue(one_input_two_output_tx.fee == 0)
+
+        # two input one output
+        two_input_one_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input],
+                oneTimeAddresses[input + 1]
+            ],
+            outs = [
+                (receiver, 198)
+            ]
+        )
+        self.assertTrue(two_input_one_output_tx.verify())
+        self.assertTrue(two_input_one_output_tx.fee == 2)
+
+        # two input two output
+        two_input_two_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=[
+                oneTimeAddresses[input],
+                oneTimeAddresses[input + 1]
+            ],
+            outs = [
+                (receiver, 90),
+                (receiver2, 80)
+            ]
+        )
+
+        self.assertTrue(two_input_two_output_tx.verify())
+        self.assertTrue(two_input_two_output_tx.fee == 30)
+
+        # ten input one output
+        ten_input_one_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=oneTimeAddresses,
+            outs = [
+                (receiver, 999)
+            ]
+        )
+
+        self.assertTrue(ten_input_one_output_tx.verify())
+        self.assertTrue(ten_input_one_output_tx.fee == 1)
+
+        # key image part fail
+        consumedImages.append(ten_input_one_output_tx.tx_ins[0].keyImage)
+        consumedImages.append(ten_input_one_output_tx.tx_ins[1].keyImage)
+
+        ten_input_one_output_tx = Tx.generate(
+            user = user,
+            oneTimeAddresses=oneTimeAddresses,
+            outs = [
+                (receiver, 998)
+            ]
+        )
+
+        self.assertFalse(ten_input_one_output_tx.verify())
+        self.assertTrue(ten_input_one_output_tx.fee == 2)

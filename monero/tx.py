@@ -26,14 +26,20 @@ helper function
 def first_eight_bytes(x):
     return int(format(x, 'x')[:16], 16)
 
+def verifyKeyImage(keyImage):
+    return True
+
 def searchOneTimeAddr(oneTimeAddr):
 #    raise RuntimeError("not implemented")
+    pass
+
+def searchOneTimeAddrIndex(oneTimeAddr):
     pass
 
 def selectOneTimeAddr():
 #    raise RuntimeError("not implemented")
     pass
-    
+
 class Commit(EccPoint):
     def __init__(self, y, b):
         p = y * EccGenerator + b * H
@@ -296,3 +302,139 @@ class TxOut:
     
     def revealCommitMask(self, k_v, t):
         return H_n(["commitment_mask", H_n([k_v * self.txPubKey, t])])
+    
+
+
+class Tx:
+
+    """
+    Transaction class:
+    4 fields
+    1. type: 0 (miner transaction), 1 (normal transaction)
+    2. tx_ins: a list of TxIn object
+    3. tx_outs: a list of TxOut object
+    4. fee: clear text
+    """
+    def __init__(self, type, tx_ins, tx_outs, fee):
+        if type == 0 and tx_ins is not None:
+            raise ValueError("miner transaction cannot have tx_ins")
+        self.type = type
+        self.tx_ins = tx_ins
+        self.tx_outs = tx_outs
+        self.fee = fee
+    
+    @classmethod
+    def generate(cls, user, oneTimeAddresses, outs):
+        # inputs:
+        #   user: UserKeys object
+        #   oneTimeAddresses: a list of oneTimeAddress
+        #   outs: a list of (pubKey, amount) tuple
+        r = random.randint(1, EccOrder)
+        
+        type = 1
+
+        # generate tx outputs
+        tx_outs = []
+        tx_out_amounts = []
+        sum_y = 0
+        for t in range(len(outs)):
+            (pubKey, b) = outs[t]
+            if b < 0 or b > 0xffffffffffffffff:
+                raise RuntimeError("invalid amount for TxOut")
+            tx_out_amounts.append(b)
+            tx_outs.append(
+                TxOut.generate(
+                    b = b,
+                    pubKeyPair=pubKey,
+                    t=t,
+                    r = r,
+                )
+            )
+            sum_y += H_n(["commitment_mask", H_n([r * pubKey[0], t])])
+        
+        # generate unsigned tx inputs
+        tx_ins = []
+        tx_in_amounts = []
+        pseudoMasks = []
+        for i in range(len(oneTimeAddresses)):
+            oneTimeAddr = oneTimeAddresses[i]
+            t = searchOneTimeAddrIndex(oneTimeAddr)
+            if i == len(oneTimeAddresses) - 1:
+                if not len(pseudoMasks) == len(oneTimeAddresses) - 1:
+                    raise ValueError("Incorrect No. of pseudoMasks")
+                pseudoMask = (sum_y - sum(pseudoMasks)) % EccOrder
+            else:
+                pseudoMask = random.randint(1, EccOrder)
+            pseudoMasks.append(pseudoMask)
+            tx_in = TxIn.generateUnsigned(
+                    oneTimeAddr=oneTimeAddr,
+                    user = user,
+                    t = t,
+                    pseudoMask=pseudoMask,
+            )
+            prevOut = searchOneTimeAddr(oneTimeAddr)
+            b = prevOut.commit.resolve(
+                txPubKey = prevOut.txPubKey,
+                amount = prevOut.amount,
+                k_v = user.view.secret,
+                t = searchOneTimeAddrIndex(oneTimeAddr),
+            )
+            tx_in_amounts.append(b)
+            tx_ins.append(tx_in)
+        fee = sum(tx_in_amounts) - sum(tx_out_amounts)
+        if fee < 0 or fee > 0xffffffffffffffff:
+            raise ValueError("Incorrect fee amount")
+
+        # unsigned tx
+        tx = cls(
+            type = type,
+            tx_ins = tx_ins,
+            tx_outs = tx_outs,
+            fee = fee,
+        )
+        m = tx.serialize_unsigned()
+
+        # sign each tx in
+        for i in range(len(tx.tx_ins)):
+            tx.tx_ins[i].sign(
+                oneTimeAddr=oneTimeAddresses[i],
+                user = user,
+                m = m,
+                pseudoMask=pseudoMasks[i],
+                t = searchOneTimeAddrIndex(oneTimeAddresses[i]),
+            )
+            if not tx.tx_ins[i].verify(m):
+                raise RuntimeError("sig verification failed")
+
+        return tx
+    
+    def verify(self):
+        m = self.serialize_unsigned()
+        for tx_in in self.tx_ins:
+            # verify sig
+            if not tx_in.verify(m):
+                return False
+            # verify key image (double spending)
+            if not verifyKeyImage(tx_in.keyImage):
+                return False
+        # verify amount
+        commit_sum = 0 * EccGenerator
+        for i in self.tx_ins:
+            commit_sum += i.pseudoOut
+        for o in self.tx_outs:
+            commit_sum -= o.commit
+        if not commit_sum == self.fee * H:
+            return False
+        return True
+        
+        
+    def serialize_unsigned(self):
+        # serialize unsigned transaction for signature
+        result = b''
+        result += int_to_little_endian(self.type, 1)
+        result += int_to_little_endian(self.fee, 8)
+        for tx_in in self.tx_ins:
+            result += tx_in.serialize_unsigned()
+        for tx_out in self.tx_outs:
+            result += tx_out.serialize()
+        return H_n([result])
