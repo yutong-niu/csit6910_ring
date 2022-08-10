@@ -51,7 +51,7 @@ class Block:
         # convert it to int
         prev_block = little_endian_to_int(s.read(32))
         prev_block = format(prev_block, 'x')
-        prev_block = '0' * (32 - len(prev_block)) + prev_block
+        prev_block = '0' * (64 - len(prev_block)) + prev_block
 
         timestamp = little_endian_to_int(s.read(4))
         nonce = little_endian_to_int(s.read(4))
