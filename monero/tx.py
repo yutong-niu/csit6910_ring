@@ -27,9 +27,6 @@ helper function
 def first_eight_bytes(x):
     return int(format(x, 'x')[:16], 16)
 
-def verifyKeyImage(keyImage):
-    return True
-
 def searchOneTimeAddr(oneTimeAddr):
 #    raise RuntimeError("not implemented")
     pass
@@ -473,6 +470,12 @@ class Tx:
         return cls(type, tx_ins, tx_outs, fee)
     
 
+    def getKeyImages(self):
+        images = []
+        for tx_in in self.tx_ins:
+            images.append(tx_in.keyImage)
+        return images
+
     def verify(self):
         if self.type == 1:
             m = self.serialize_unsigned()
@@ -480,13 +483,14 @@ class Tx:
                 # verify sig
                 if not tx_in.verify(m):
                     return False
-                # verify key image (double spending)
-                if not verifyKeyImage(tx_in.keyImage):
-                    return False
             # verify amount
             commit_sum = 0 * EccGenerator
             for i in self.tx_ins:
                 commit_sum += i.pseudoOut
+            # duplicate keyImages
+            images = self.getKeyImages()
+            if len(set(images)) != len(self.tx_ins):
+                return False
             for o in self.tx_outs:
                 commit_sum -= o.commit
             if not commit_sum == self.fee * H:
