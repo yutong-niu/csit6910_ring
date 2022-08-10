@@ -10,7 +10,7 @@ from address import UserKeys
 class BlockTest(TestCase):
 
     def test_emptyBlock(self):
-        prev_block = '0' * 32
+        prev_block = '0' * 64
         user = UserKeys.generate()
         block = Block(prev=prev_block)        
         block.createMiner(user.getPubKey())
@@ -21,7 +21,7 @@ class BlockTest(TestCase):
         self.assertTrue(block == parsed)
     
     def test_normalBlock(self):
-        prev_block = '0' * 32
+        prev_block = '0' * 64
         user = UserKeys.generate()
         outs = []
         ts = []
