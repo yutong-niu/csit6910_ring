@@ -1,6 +1,5 @@
 import random
 import hashlib
-from typing import Type
 
 from ecc import (
     PrivateKey as EccKeyPair,
