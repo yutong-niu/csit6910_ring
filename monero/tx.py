@@ -567,3 +567,10 @@ class Tx:
             tx_outs = tx_outs,
             fee = fee,
         )
+    
+
+    def id(self):
+        return int_to_little_endian(self.hash(), 32)
+    
+    def hash(self):
+        return H_n(self.serialize())
