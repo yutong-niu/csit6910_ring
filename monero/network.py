@@ -1,4 +1,3 @@
-from atexit import register
 import os
 import re
 import socket

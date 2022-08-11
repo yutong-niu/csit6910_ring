@@ -1,6 +1,5 @@
 import os
 import inspect
-from tkinter import W
 
 from tx import Tx, Commit
 from ecc import S256Point as EccPoint
