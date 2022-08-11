@@ -78,6 +78,10 @@ class UserKeys:
         # pub key getter
         return (self.view.point, self.spend.point, self.sub)
 
+    def serialize(self):
+        (K_v, K_s, sub) = self.getPubKey()
+        return K_v.sec().hex() + K_s.sec().hex()
+
     @classmethod
     def generateOneTimeAddr(cls, pubKeyPair, r=None, sub=False):
         # generate one time address
