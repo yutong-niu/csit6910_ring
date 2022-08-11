@@ -3,7 +3,6 @@ import random
 import inspect
 
 from io import BytesIO
-from re import L
 from address import UserKeys
 from block import Block
 from tx import Tx
@@ -114,11 +113,11 @@ class Chain:
     
 
     def dumpBlockData(self):
-        with open(self.getBlockDataFile(), 'wb') as f:
+        with open(self.getBlockDataFile(), 'wb+') as f:
             f.write(self.serializeBlocks())
 
     def dumpTxData(self):
-        with open(self.getTxDataFile(), 'wb') as f:
+        with open(self.getTxDataFile(), 'wb+') as f:
             f.write(self.serializeTxs())
 
     def loadBlockData(self):
@@ -224,21 +223,20 @@ class Chain:
         longer = self.__class__(name = self.name, blocks = blocks)
         if not longer.verifyBlocks():
             raise RuntimeError("Invalid chain received")
-        if (not self.verifyBlocks()) or (len(blocks) > len(self.blocks)):
+        if (len(blocks) > len(self.blocks)) or (not self.verifyBlocks()):
             self.blocks = blocks
         
-
-        # cleanup tx
-        images = self.getKeyImages()
-        for tx in self.txs:
-            if not tx.verify():
-                self.txs.remove(tx)            
-            for i in tx.getKeyImages():
-                if i in images:
-                    self.txs.remove(tx)
-                    break
-        self.dumpBlockData()
-        self.dumpTxData()
+            # cleanup tx
+            images = self.getKeyImages()
+            for tx in self.txs:
+                if not tx.verify():
+                    self.txs.remove(tx)            
+                for i in tx.getKeyImages():
+                    if i in images:
+                        self.txs.remove(tx)
+                        break
+            self.dumpBlockData()
+            self.dumpTxData()
 
 
     def add_tx(self, tx):

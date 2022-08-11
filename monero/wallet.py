@@ -2,7 +2,7 @@ import os
 import inspect
 from tkinter import W
 
-from tx import Tx
+from tx import Tx, Commit
 from ecc import S256Point as EccPoint
 from ring import MLSAG
 from address import UserKeys
@@ -32,6 +32,7 @@ class Wallet:
                 return cls(UserKeys(k_v, k_s))
         else:
         # create secret if not exist
+            os.makedirs(os.path.dirname(VIEW_SECRET_PATH), exist_ok=True)
             key = UserKeys.generate()
             with open(VIEW_SECRET_PATH, 'w+') as f:
                 f.write(format(key.view.secret, 'x'))
@@ -55,7 +56,7 @@ class Wallet:
                 for t in range(len(tx.tx_outs)):
                     out = tx.tx_outs[t]
                     if self.key.ownsOneTimeAddr((out.txPubKey, out.oneTimeAddr, t)):
-                        amount = out.commit.resolve(out.txPubKey, out.amount, self.key.view.secret, t)
+                        amount = Commit.resolve(out.txPubKey, out.amount, self.key.view.secret, t)
                         keyImage = self.key.generateOneTimeSecret((out.txPubKey, out.oneTimeAddr, t)) * \
                             MLSAG.H_p(out.oneTimeAddr)
                         result.append((out.oneTimeAddr, amount, keyImage))
@@ -120,5 +121,3 @@ class Wallet:
             chain.add_tx(t)
         else:
             raise RuntimeError("Tx verification failed during creation")
-        
-

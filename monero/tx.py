@@ -28,15 +28,14 @@ def first_eight_bytes(x):
     return int(format(x, 'x')[:16], 16)
 
 def searchOneTimeAddr(oneTimeAddr):
-#    raise RuntimeError("not implemented")
-    pass
+    raise RuntimeError("To be substitued")
 
 def searchOneTimeAddrIndex(oneTimeAddr):
-    pass
+    raise RuntimeError("To be substitued")
 
 def selectOneTimeAddr():
-#    raise RuntimeError("not implemented")
-    pass
+    raise RuntimeError("To be substitued")
+
 
 class Commit(EccPoint):
     def __init__(self, y, b):
@@ -56,12 +55,13 @@ class Commit(EccPoint):
 
         return (cls(y, b), amount)
     
-    def resolve(self, txPubKey, amount, k_v, t=0):
+    @staticmethod
+    def resolve(txPubKey, amount, k_v, t=0):
         return first_eight_bytes(amount) ^ \
             first_eight_bytes(H_n(["amount", H_n([k_v * txPubKey, t])]))
     
     def newCommit(self, txPubKey, amount, k_v, t, new_y=None):
-        b = self.resolve(txPubKey, amount, k_v, t)
+        b = Commit.resolve(txPubKey, amount, k_v, t)
         y = H_n(["commitment_mask", H_n([k_v * txPubKey, t])])
         if new_y is None:
             new_y = random.randint(1, EccOrder)
@@ -119,7 +119,7 @@ class TxIn:
             t = 0
         else:
             # normal tx output
-            b = prevOut.commit.resolve(
+            b = Commit.resolve(
                 txPubKey = prevOut.txPubKey,
                 amount = prevOut.amount,
                 k_v = user.view.secret,
@@ -409,7 +409,7 @@ class Tx:
                 b = prevOut.amount
                 t = 0
             else:
-                b = prevOut.commit.resolve(
+                b = Commit.resolve(
                     txPubKey = prevOut.txPubKey,
                     amount = prevOut.amount,
                     k_v = user.view.secret,
